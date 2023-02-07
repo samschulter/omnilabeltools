@@ -43,7 +43,7 @@ In general, we try to follow the MS COCO dataset format as much as possible, wit
 
 ### Ground truth data
 
-```json
+```
 {
     images: [
         {
@@ -77,7 +77,7 @@ In general, we try to follow the MS COCO dataset format as much as possible, wit
 
 **NB: The test server is not online at this time. Once online, prediction results are submitted in the following format:**
 
-```json
+```
 [
     {
         image_id        ... the image id this predicted box belongs to
