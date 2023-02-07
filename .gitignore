@@ -1,0 +1,10 @@
+*.DS_Store
+**/__pycache__
+.ipynb_checkpoints
+
+# package build
+build
+omnilabeltools.egg-info
+
+# data directory
+data

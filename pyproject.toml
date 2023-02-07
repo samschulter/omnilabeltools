@@ -1,0 +1,39 @@
+[build-system]
+requires = ["setuptools>=59.5.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["omnilabeltools*"]
+exclude = ["tests*", "data*"]
+
+[project]
+name = "omnilabeltools"
+version = "0.1"
+authors = [
+  {name="Samuel Schulter", email="samuel.schulter@gmail.com"},
+  {name="Yumin Suh", email="yumin@nec-labs.com"},
+  {name="Vijay Kumar B G", email="vijay.kumar@nec-labs.com"}
+]
+description = "Official toolkit for the OmniLabel benchmark"
+readme = "README.md"
+license = {file = "LICENSE"}
+requires-python = ">=3.7"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+]
+dependencies = [
+    "pycocotools>=2.0.2",
+    "Pillow>=7.1"
+]
+
+[project.scripts]
+oleval = "omnilabeltools.eval:main_cli"
+olvis = "omnilabeltools.visualize:main_cli"
+olstats = "omnilabeltools.stats:main_cli"
+
+[project.urls]
+homepage = "https://www.omnilabel.org"
+repository = "https://github.com/samschulter/omnilabeltools"
+bugtracker = "https://github.com/samschulter/omnilabeltools/issues"
