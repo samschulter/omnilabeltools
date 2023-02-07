@@ -22,13 +22,14 @@ Install OmniLabelTools as:
 
 ``` bash
 git clone https://www.github.com/samschulter/omnilabeltools
-pip install omnilabeltools
+cd omnilabeltools
+pip install .
 ```
 
 You can also install in developer mode:
 
 ``` bash
-pip install -e omnilabeltools
+pip install -e .
 ```
 
 ## Dataset setup
