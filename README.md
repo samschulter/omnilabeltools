@@ -1,6 +1,6 @@
 # OmniLabelTools (OLT) - Python tools for the OmniLabel benchmark
 
-This repository provides a Python toolbox for working with the OmniLabel dataset/benchmark [(http://www.omnilabel.org)](http://www.omnilabel.org). The toolbox provides
+This repository provides a Python toolbox for working with the OmniLabel dataset/benchmark [(https://www.omnilabel.org)](https://www.omnilabel.org). The toolbox provides
 
 * evaluation of prediction results
 * visualization of ground truth and predictions
@@ -29,7 +29,7 @@ pip install -e omnilabeltools
 
 ## Dataset setup
 
-Please visit [http://www.omnilabel.org/download](http://www.omnilabel.org/download) for download and setup instructions. To verify the dataset setup, you can run the following two scripts to print some basic dataset statistics and visualize some examples:
+Please visit [https://www.omnilabel.org/dataset/download](https://www.omnilabel.org/dataset/download) for download and setup instructions. To verify the dataset setup, you can run the following two scripts to print some basic dataset statistics and visualize some examples:
 
 ``` python
 olstats --path-to-json path/to/dataset/gt/json
@@ -39,7 +39,7 @@ olvis --path-to-json path/to/dataset/gt/json --path-to-imgs path/to/image/direct
 
 ## Annotation format
 
-In general, we try to follow the MS COCO dataset format as much as possible, with all annotations stored in one `json` file. Please see [http://www.omnilabel.org/task](http://www.omnilabel.org/task) for more details.
+In general, we try to follow the MS COCO dataset format as much as possible, with all annotations stored in one `json` file. Please see [https://www.omnilabel.org/task](https://www.omnilabel.org/task) for more details.
 
 ### Ground truth data
 
