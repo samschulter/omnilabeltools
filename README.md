@@ -1,6 +1,10 @@
-# OmniLabelTools (OLT) - Python tools for the OmniLabel benchmark
+# OmniLabelTools
 
-This repository provides a Python toolbox for working with the OmniLabel dataset/benchmark [(https://www.omnilabel.org)](https://www.omnilabel.org). The toolbox provides
+> A Python toolkit for the OmniLabel benchmark [(https://www.omnilabel.org)](https://www.omnilabel.org)
+
+![OmniLabel benchmark banner](docs/wordcloud_descriptions_logo.png)
+
+Main features:
 
 * evaluation of prediction results
 * visualization of ground truth and predictions
@@ -39,7 +43,7 @@ olvis --path-to-json path/to/dataset/gt/json --path-to-imgs path/to/image/direct
 
 ## Annotation format
 
-In general, we try to follow the MS COCO dataset format as much as possible, with all annotations stored in one `json` file. Please see [https://www.omnilabel.org/task](https://www.omnilabel.org/task) for more details.
+In general, we try to follow the MS COCO dataset format as much as possible, with all annotations stored in one `json` file. Please see [https://www.omnilabel.org/dataset/download](https://www.omnilabel.org/dataset/download#h.nig8tqi55r85) and [https://www.omnilabel.org/task](https://www.omnilabel.org/task) for more details.
 
 ### Ground truth data
 
@@ -110,6 +114,8 @@ We also provide a stand-alone script:
 ``` python
 oleval --path-to-gt path/to/gt/json --path-to-res path/to/result/json
 ```
+
+The result json file follows the format described [above](#submitting-prediction-results).
 
 ## License
 
