@@ -1,4 +1,4 @@
-from typing import Union
+from typing import Union, List
 from pathlib import Path
 import json
 import copy
@@ -47,24 +47,30 @@ class OmniLabel:
                 img["instances"] = imgid_to_boxes[img["id"]]
         self.samples = {d["id"]: d for d in data_json["images"]}
 
-    def load_res(self, path_json: Union[str, Path]):
+    def load_res(self, source: Union[str, Path, List[dict]]):
         """
         Loads the given prediction results, instantiates a copy of the `OmniLabel` instance
         (of `self`) and replaces the ground truth boxes with the predictions.
 
         Args:
-            path_json (Path, str): Path to json file containing prediction results
+            source (Path, str, List[dict]): Either, the source a path to a json file containing the
+                prediction results, or a list of the results themselves
 
         Returns:
             OmniLabel: A deepcopy of the instance (`self`) itself, with ground truth boxes replaced
                 by predictions
         """
-        if isinstance(path_json, str):
-            path_json = Path(path_json)
-        assert path_json.exists(), f"Path to JSON '{path_json}' does not work!"
-        with open(path_json, "r") as fid:
-            result_json = json.load(fid)
-        assert isinstance(result_json, list), "Faulty JSON file: not a list"
+        assert isinstance(source, (str, Path, list))
+        if isinstance(source, str):
+            source = Path(source)
+        if isinstance(source, Path):
+            assert source.exists(), f"Path to JSON '{source}' does not work!"
+            with open(source, "r") as fid:
+                result_json = json.load(fid)
+            assert isinstance(result_json, list), "Faulty JSON file: not a list"
+        else:
+            assert isinstance(source, list)
+            result_json = source
 
         res = copy.deepcopy(self)
         imgid_to_boxes = defaultdict(list)
