@@ -3,6 +3,7 @@ from PIL import Image, ImageDraw, ImageFont
 from pathlib import Path
 import platform
 import os
+import copy
 from collections import defaultdict
 from itertools import chain
 from .omnilabel import OmniLabel
@@ -160,7 +161,8 @@ class Visualizer:
 def visualize_image_sample(
         sample: Dict,
         path_imgs: str,
-        highlight_description_ids: Optional[List[int]] = None
+        highlight_description_ids: Optional[List[int]] = None,
+        show_only_free_form_descriptions: bool = False
 ):
     """
     Visualize a sample of the dataset, that is, an image along with the ground truth bounding boxes
@@ -170,17 +172,32 @@ def visualize_image_sample(
         sample (dict): A sample of the dataset, see `OmniLabel`
         path_imgs (str): A path to the base image directory
         highlight_description_ids (list(int)): List of description IDs to highlight
+        show_only_free_form_descriptions (bool): Hide standard object categories in visualization
 
     Returns:
         PIL.Image.Image
     """
     assert isinstance(sample, dict), \
         f"Given 'sample' must be of type 'dict', but found '{type(sample)}'"
+
     path_im = Path(path_imgs) / sample["file_name"]
     assert path_im.exists(), f"Image not found: '{path_im}'"
     vis = Visualizer(Image.open(path_im).convert("RGB"))
+
+    instances = sample["instances"]
+    if show_only_free_form_descriptions:
+        descr_ids = [descr["id"] for descr in sample["labelspace"] if descr["type"] == "D"]
+        instances = copy.deepcopy([  # deepcopy b/c the field 'description_ids' may change below
+            inst for inst in instances
+            if any(descr_id in descr_ids for descr_id in inst["description_ids"])
+        ])
+        for inst in instances:
+            inst["description_ids"] = [
+                descr_id for descr_id in inst["description_ids"] if descr_id in descr_ids
+            ]
+
     vis.draw_instances(
-        sample["instances"],
+        instances,
         sample["labelspace"],
         highlight_description_ids=highlight_description_ids,
     )
@@ -245,6 +262,7 @@ def main_cli():
         "--description-index", type=int, nargs="+", metavar="IDX",
         help="Visualize specific description indices"
     )
+    parser.add_argument("--show-only-free-form-descriptions", action="store_true")
     parser.add_argument(
         "--output-format", default="png", choices=["jpg", "png"], help="Default is 'png'"
     )
@@ -266,7 +284,12 @@ def main_cli():
 
     for ii, idx in enumerate(img_inds):
         sample = ol.get_image_sample(idx)
-        im = visualize_image_sample(sample, args.path_to_imgs, highlight_descr_ids)
+        im = visualize_image_sample(
+            sample=sample,
+            path_imgs=args.path_to_imgs,
+            highlight_description_ids=highlight_descr_ids,
+            show_only_free_form_descriptions=args.show_only_free_form_descriptions
+        )
         fn_out = path_output / "{imgid:010d}.{fmt:s}".format(
             imgid=sample["id"], fmt=args.output_format)
         im.save(fn_out)
