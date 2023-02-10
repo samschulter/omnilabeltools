@@ -162,7 +162,8 @@ def visualize_image_sample(
         sample: Dict,
         path_imgs: str,
         highlight_description_ids: Optional[List[int]] = None,
-        show_only_free_form_descriptions: bool = False
+        show_only_free_form_descriptions: bool = False,
+        show_negative_free_form_descriptions: bool = False
 ):
     """
     Visualize a sample of the dataset, that is, an image along with the ground truth bounding boxes
@@ -173,6 +174,8 @@ def visualize_image_sample(
         path_imgs (str): A path to the base image directory
         highlight_description_ids (list(int)): List of description IDs to highlight
         show_only_free_form_descriptions (bool): Hide standard object categories in visualization
+        show_negative_free_form_descriptions (bool): Show free-form object descriptions of the
+            image's labelspace that do not refer to any object. Added below the image
 
     Returns:
         PIL.Image.Image
@@ -201,7 +204,37 @@ def visualize_image_sample(
         sample["labelspace"],
         highlight_description_ids=highlight_description_ids,
     )
-    return vis.get_image()
+
+    vis_pil = vis.get_image()
+    if show_negative_free_form_descriptions:
+        # Get the text for negative descriptions
+        descr_ids_pos = set(chain(*[inst["description_ids"] for inst in sample["instances"]]))
+        neg_descrs = [
+            descr for descr in sample["labelspace"]
+            if descr["type"] == "D" and descr["id"] not in descr_ids_pos
+        ]
+        if len(neg_descrs) == 0:
+            neg_text = "No negative free-form text descriptions for this image"
+        else:
+            neg_text = f"{len(neg_descrs)} negative free-form text descriptions:\n" + \
+                "\n".join(["- \"" + descr["text"] + "\"" for descr in neg_descrs])
+
+        # Draw the text below the actual image
+        draw = ImageDraw.Draw(vis_pil, mode="RGB")
+        text_w, text_h = draw.multiline_textsize(text=neg_text, font=vis.font)
+        text_w += 10  # Left
+        text_h += 15  # Top (5) & bottom (10)
+        im_h = vis_pil.height + text_h
+        im_w = max(vis_pil.width, text_w)
+        vis_pil_pad = Image.new(vis_pil.mode, size=(im_w, im_h), color=(255, 255, 255))
+        vis_pil_pad.paste(vis_pil, box=(0, 0))
+        draw = ImageDraw.Draw(vis_pil_pad)
+        draw.multiline_text(
+            xy=(10, vis_pil.height + 5), text=neg_text, fill=(0, 0, 0), font=vis.font
+        )
+        vis_pil = vis_pil_pad
+
+    return vis_pil
 
 
 def gather_image_inds_from_description_inds(
@@ -264,6 +297,12 @@ def main_cli():
     )
     parser.add_argument("--show-only-free-form-descriptions", action="store_true")
     parser.add_argument(
+        "--show-negative-free-form-descriptions",
+        action="store_true",
+        help=("Show free-form object descriptions of the image's labelspace that do not refer to "
+              "any object")
+    )
+    parser.add_argument(
         "--output-format", default="png", choices=["jpg", "png"], help="Default is 'png'"
     )
     args = parser.parse_args()
@@ -288,7 +327,8 @@ def main_cli():
             sample=sample,
             path_imgs=args.path_to_imgs,
             highlight_description_ids=highlight_descr_ids,
-            show_only_free_form_descriptions=args.show_only_free_form_descriptions
+            show_only_free_form_descriptions=args.show_only_free_form_descriptions,
+            show_negative_free_form_descriptions=args.show_negative_free_form_descriptions
         )
         fn_out = path_output / "{imgid:010d}.{fmt:s}".format(
             imgid=sample["id"], fmt=args.output_format)
