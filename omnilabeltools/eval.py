@@ -2,9 +2,6 @@ import numpy as np
 import time
 import datetime
 import copy
-import contextlib
-import io
-import sys
 from collections import defaultdict
 from pycocotools.cocoeval import COCOeval, Params as ParamsCOCOAPI
 from .omnilabel import OmniLabel
@@ -195,10 +192,11 @@ class OmniLabelEval(COCOeval):
         R = len(p.recThrs)
         A = len(p.areaRng)
         M = len(p.maxDets)
-        D = len(p.descrTypes)
+        D = len(p.descrGroups)
         precision = -np.ones((T, R, 1, A, M, D))  # -1 for the precision of absent description
         recall = -np.ones((T, 1, A, M, D))
         scores = -np.ones((T, R, 1, A, M, D))
+        gtcount = -np.ones((A, M, D))
 
         # create dictionary for future indexing
         _pe = self._paramsEval
@@ -212,16 +210,16 @@ class OmniLabelEval(COCOeval):
         # retrieve E at each description, area range, and max number of detections
         for a, a0 in enumerate(a_list):
             for m, maxDet in enumerate(m_list):
-                for di, (descrType, descrLen) in enumerate(zip(p.descrTypes, p.descrLenghts)):
-                    assert len(descrLen) == 2
+                for di, descr_group in enumerate(p.descrGroups):
+                    assert len(descr_group["len"]) == 2
                     E = [
                         self.evalImgs[(descrid, f"{a0[0]}-{a0[1]}", i)]
                         if (descrid, f"{a0[0]}-{a0[1]}", i) in self.evalImgs
                         else None
                         for i in i_list for descrid in self.imgIdToLabelspace[i]
-                        if (self.descrIdToType[descrid] in descrType)
-                        and (self.descrIdToDescrNumWords[descrid] >= descrLen[0])
-                        and self.descrIdToDescrNumWords[descrid] <= descrLen[1]
+                        if (self.descrIdToType[descrid] in descr_group["type"])
+                        and (self.descrIdToDescrNumWords[descrid] >= descr_group["len"][0])
+                        and self.descrIdToDescrNumWords[descrid] <= descr_group["len"][1]
                     ]
                     E = [e for e in E if e is not None]
                     if len(E) == 0:
@@ -237,6 +235,7 @@ class OmniLabelEval(COCOeval):
                     dtIg = np.concatenate([e["dtIgnore"][:, 0:maxDet] for e in E], axis=1)[:, inds]
                     gtIg = np.concatenate([e["gtIgnore"] for e in E])
                     npig = np.count_nonzero(gtIg == 0)
+                    gtcount[a, m, di] = npig
                     if npig == 0:
                         continue
                     tps = np.logical_and(dtm,  np.logical_not(dtIg))
@@ -283,16 +282,17 @@ class OmniLabelEval(COCOeval):
             "precision": precision,
             "recall":   recall,
             "scores": scores,
+            "gtcount": gtcount,
         }
         toc = time.time()
         print("DONE (t={:0.2f}s).".format(toc-tic))
 
-    def summarize(self, redirect_stdout=False):
+    def summarize(self, verbose=True):
         """
         Summarize evaluation results in various metrics and groups (defined in `Params`)
 
         Arg:
-            redirect_stdout (bool): If True, suppresses print's output
+            verbose (bool): If False, does not print the evaluation metrics and results
 
         Returns:
             list(dict): List of evaluation metric descriptions and result values
@@ -300,16 +300,13 @@ class OmniLabelEval(COCOeval):
 
         def _summarize(ap=1, iouThr=None, areaRng="all", descr="all", maxDets=100):
             p = self.params
-            iStr = (" {:<18} {} @[ IoU={:<9} | area={:>6s} | descr={:>8s} | maxDets={:>3d} ] "
-                    "= {:0.3f}")
-            titleStr = "Average Precision" if ap == 1 else "Average Recall"
-            typeStr = "(AP)" if ap == 1 else "(AR)"
             iouStr = "{:0.2f}:{:0.2f}".format(p.iouThrs[0], p.iouThrs[-1]) \
                 if iouThr is None else "{:0.2f}".format(iouThr)
 
             aind = [i for i, aRng in enumerate(p.areaRngLbl) if aRng == areaRng]
             mind = [i for i, mDet in enumerate(p.maxDets) if mDet == maxDets]
-            dind = p.descrNames.index(descr)
+            dind = [g["name"] for g in p.descrGroups].index(descr)
+            num_gt = int(self.eval["gtcount"][aind, mind, dind][0])
             if ap == 1:
                 # dimension of precision: [TxRxKxAxMxD]
                 s = self.eval["precision"]
@@ -329,7 +326,6 @@ class OmniLabelEval(COCOeval):
                 mean_s = -1
             else:
                 mean_s = np.mean(s[s > -1])
-            print(iStr.format(titleStr, typeStr, iouStr, areaRng, descr, maxDets, mean_s))
             metric_dict = {
                 "metric": "AP" if ap == 1 else "AR",
                 "iou": iouStr,
@@ -337,36 +333,64 @@ class OmniLabelEval(COCOeval):
                 "description": descr,
                 "max_dets": maxDets,
             }
-            return mean_s, metric_dict
+            return mean_s, metric_dict, num_gt
 
-        def _summarizeDets():
-            stats = np.zeros((17,))
-            metrics = [None] * stats.size
+        def _summarize_all_metrics():
             max_det_dflt = self.params.maxDets[2]
-            stats[0], metrics[0] = _summarize(1)
-            stats[1], metrics[1] = _summarize(1, iouThr=.5, maxDets=max_det_dflt)
-            stats[2], metrics[2] = _summarize(1, iouThr=.75, maxDets=max_det_dflt)
-            stats[3], metrics[3] = _summarize(1, areaRng="small", maxDets=max_det_dflt)
-            stats[4], metrics[4] = _summarize(1, areaRng="medium", maxDets=max_det_dflt)
-            stats[5], metrics[5] = _summarize(1, areaRng="large", maxDets=max_det_dflt)
-            stats[6], metrics[6] = _summarize(1, descr="categ", maxDets=max_det_dflt)
-            stats[7], metrics[7] = _summarize(1, descr="descr", maxDets=max_det_dflt)
-            stats[8], metrics[8] = _summarize(1, descr="descr-S", maxDets=max_det_dflt)
-            stats[9], metrics[9] = _summarize(1, descr="descr-M", maxDets=max_det_dflt)
-            stats[10], metrics[10] = _summarize(1, descr="descr-L", maxDets=max_det_dflt)
-            stats[11], metrics[11] = _summarize(0, maxDets=self.params.maxDets[0])
-            stats[12], metrics[12] = _summarize(0, maxDets=self.params.maxDets[1])
-            stats[13], metrics[13] = _summarize(0, maxDets=self.params.maxDets[2])
-            stats[14], metrics[14] = _summarize(0, areaRng="small", maxDets=max_det_dflt)
-            stats[15], metrics[15] = _summarize(0, areaRng="medium", maxDets=max_det_dflt)
-            stats[16], metrics[16] = _summarize(0, areaRng="large", maxDets=max_det_dflt)
-            return stats, metrics
+            ret = []
+            ret.append(_summarize(1, descr="descr", maxDets=max_det_dflt))
+            ret.append(_summarize(1, descr="categ", maxDets=max_det_dflt))
+            ret.append(_summarize(1, descr="descr-S", maxDets=max_det_dflt))
+            ret.append(_summarize(1, descr="descr-M", maxDets=max_det_dflt))
+            ret.append(_summarize(1, descr="descr-L", maxDets=max_det_dflt))
+            ret.append(_summarize(1, descr="descr", iouThr=.5, maxDets=max_det_dflt))
+            ret.append(_summarize(1, descr="descr", iouThr=.75, maxDets=max_det_dflt))
+            ret.append(_summarize(1, descr="categ", iouThr=.5, maxDets=max_det_dflt))
+            ret.append(_summarize(1, descr="categ", iouThr=.75, maxDets=max_det_dflt))
+            ret.append(_summarize(0, descr="descr", maxDets=self.params.maxDets[2]))
+            ret.append(_summarize(0, descr="categ", maxDets=self.params.maxDets[2]))
 
-        redirect = io.StringIO() if redirect_stdout else sys.stdout
-        with contextlib.redirect_stdout(redirect):
-            self.stats, self.metrics = _summarizeDets()
+            stats = np.zeros((len(ret) + 1,))
+            metrics = [None] * stats.size
+            num_gts = [None] * stats.size
+            for ii, (stat, metric, num_gt) in enumerate(ret):
+                stats[ii + 1] = stat
+                metrics[ii + 1] = metric
+                num_gts[ii + 1] = num_gt
 
-        ret = [{"metric": m, "value": v} for m, v in zip(self.metrics, self.stats)]
+            # Overall metric: Harmonic mean of AP of descriptions and categories
+            stats[0] = (2 * stats[1] * stats[2]) / (stats[1] + stats[2] + 1e-5)
+            metrics[0] = copy.deepcopy(metrics[1])
+            metrics[0]["description"] = "hm(descr,categ)"
+            num_gts[0] = num_gts[1] + num_gts[2]
+
+            return stats, metrics, num_gts
+
+        def _print_metrics(results):
+            res_str = (
+                " {metric:s} @[ IoU={iou:<9} | area={area:>6s} | descr={descr:>15s} | "
+                "maxDets={md:>3d} ][ num-gt={numgt:>5d} ] = {val:0.3f}"
+            )
+            for res in results:
+                met = res["metric"]
+                print(res_str.format(
+                    metric=met["metric"],
+                    iou=met["iou"],
+                    area=met["area"],
+                    descr=met["description"],
+                    md=met["max_dets"],
+                    numgt=res["numgt"],
+                    val=res["value"]
+                ))
+
+        self.stats, self.metrics, num_gts = _summarize_all_metrics()
+        ret = [
+            {"metric": m, "value": v, "numgt": n}
+            for m, v, n in zip(self.metrics, self.stats, num_gts)
+        ]
+
+        if verbose:
+            _print_metrics(ret)
 
         return ret
 
@@ -389,9 +413,14 @@ class Params(ParamsCOCOAPI):
     def __init__(self, iouType="segm"):
         super().__init__(iouType)
         max_len = 1e5
-        self.descrLenghts = [[0, max_len], [0, max_len], [0, max_len], [0, 3], [4, 8], [9, max_len]]
-        self.descrTypes = [("C", "D"), ("C"), ("D"), ("D"), ("D"), ("D")]
-        self.descrNames = ["all", "categ", "descr", "descr-S", "descr-M", "descr-L"]
+        self.descrGroups = [
+            {"name": "all",     "type": ("D", "C"), "len": [0, max_len]},
+            {"name": "categ",   "type":      ("C"), "len": [0, max_len]},
+            {"name": "descr",   "type":      ("D"), "len": [0, max_len]},
+            {"name": "descr-S", "type":      ("D"), "len": [0, 3]},
+            {"name": "descr-M", "type":      ("D"), "len": [4, 8]},
+            {"name": "descr-L", "type":      ("D"), "len": [9, max_len]},
+        ]
 
 
 def main_cli():
@@ -432,7 +461,7 @@ data format, please visit: https://www.omnilabel.org/download
     assert path_res.exists(), path_res
 
     olgt = OmniLabel(path_json=path_gt)
-    oldt = olgt.load_res(path_json=path_res)
+    oldt = olgt.load_res(source=path_res)
 
     ol_eval = OmniLabelEval(gt=olgt, dt=oldt)
     ol_eval.evaluate()
