@@ -3,6 +3,7 @@ import time
 import datetime
 import copy
 from collections import defaultdict
+from itertools import chain
 from pycocotools.cocoeval import COCOeval, Params as ParamsCOCOAPI
 from .omnilabel import OmniLabel
 
@@ -115,13 +116,22 @@ class OmniLabelEval(COCOeval):
             img_id: [d["id"] for d in gt["labelspace"]]
             for img_id, gt in self.omniGt.samples.items() if img_id in p.imgIds
         }
-        descr_ids = self.omniGt.descr_ids
-        self.descrIdToType = {
-            descr_id: self.omniGt.get_description(descr_id)["type"] for descr_id in descr_ids
-        }
+
+        self.descrIdToType = {}
+        for img_id, gt in self.omniGt.samples.items():
+            if img_id not in p.imgIds:
+                continue
+            pos_descr_ids = set(chain(*[box["description_ids"] for box in gt["instances"]]))
+            for descr in gt["labelspace"]:
+                type_str = descr["type"]
+                if type_str == "D":
+                    type_str += "p" if descr["id"] in pos_descr_ids else "n"
+                assert (descr["id"], img_id) not in self.descrIdToType
+                self.descrIdToType[(descr["id"], img_id)] = type_str
+
         self.descrIdToDescrNumWords = {
             descr_id: len(self.omniGt.get_description(descr_id)["text"].split())
-            for descr_id in descr_ids
+            for descr_id in self.omniGt.descr_ids
         }
 
     def evaluate(self):
@@ -217,7 +227,7 @@ class OmniLabelEval(COCOeval):
                         if (descrid, f"{a0[0]}-{a0[1]}", i) in self.evalImgs
                         else None
                         for i in i_list for descrid in self.imgIdToLabelspace[i]
-                        if (self.descrIdToType[descrid] in descr_group["type"])
+                        if (self.descrIdToType[(descrid, i)] in descr_group["type"])
                         and (self.descrIdToDescrNumWords[descrid] >= descr_group["len"][0])
                         and self.descrIdToDescrNumWords[descrid] <= descr_group["len"][1]
                     ]
@@ -338,8 +348,9 @@ class OmniLabelEval(COCOeval):
         def _summarize_all_metrics():
             max_det_dflt = self.params.maxDets[2]
             ret = []
-            ret.append(_summarize(1, descr="descr", maxDets=max_det_dflt))
-            ret.append(_summarize(1, descr="categ", maxDets=max_det_dflt))
+            ret.append(_summarize(1, descr="categ", maxDets=max_det_dflt))  # NB: Keep this first
+            ret.append(_summarize(1, descr="descr", maxDets=max_det_dflt))  # NB: Keep this second
+            ret.append(_summarize(1, descr="descr-Pos", maxDets=max_det_dflt))
             ret.append(_summarize(1, descr="descr-S", maxDets=max_det_dflt))
             ret.append(_summarize(1, descr="descr-M", maxDets=max_det_dflt))
             ret.append(_summarize(1, descr="descr-L", maxDets=max_det_dflt))
@@ -350,6 +361,8 @@ class OmniLabelEval(COCOeval):
             ret.append(_summarize(0, descr="descr", maxDets=self.params.maxDets[2]))
             ret.append(_summarize(0, descr="categ", maxDets=self.params.maxDets[2]))
 
+            # Separate tuples returned by `_summarize` into stats, metrics and num_gts. Add one
+            # element that comes first for the final metric, see below
             stats = np.zeros((len(ret) + 1,))
             metrics = [None] * stats.size
             num_gts = [None] * stats.size
@@ -405,6 +418,7 @@ class Params(ParamsCOCOAPI):
     * 'all'               ... Standard evaluation, all object descriptions are considered
     * 'categ'             ... Only plain object *categories*, as in other (open-vocabulary) detection datasets
     * 'descr'             ... Only free-form object *descriptions* (newly collected in the OmniLabel benchmark)
+    * 'descr-Pos'         ... Only free-form object *descriptions* that refer to objects in the image (excluding negative object descriptions)
     * 'descr-S'           ... Same as 'descr', but consider only descriptions up to 3 words (short)
     * 'descr-M'           ... Same as 'descr', but consider only descriptions from 4 to 8 words (medium)
     * 'descr-L'           ... Same as 'descr', but consider only descriptions longer than 8 words (long)
@@ -414,12 +428,13 @@ class Params(ParamsCOCOAPI):
         super().__init__(iouType)
         max_len = 1e5
         self.descrGroups = [
-            {"name": "all",     "type": ("D", "C"), "len": [0, max_len]},
-            {"name": "categ",   "type":      ("C"), "len": [0, max_len]},
-            {"name": "descr",   "type":      ("D"), "len": [0, max_len]},
-            {"name": "descr-S", "type":      ("D"), "len": [0, 3]},
-            {"name": "descr-M", "type":      ("D"), "len": [4, 8]},
-            {"name": "descr-L", "type":      ("D"), "len": [9, max_len]},
+            {"name": "all",       "type": ("Dp", "Dn", "C"), "len": [0, max_len]},
+            {"name": "categ",     "type":             ("C"), "len": [0, max_len]},
+            {"name": "descr",     "type":      ("Dp", "Dn"), "len": [0, max_len]},
+            {"name": "descr-Pos", "type":            ("Dp"), "len": [0, max_len]},
+            {"name": "descr-S",   "type":      ("Dp", "Dn"), "len": [0, 3]},
+            {"name": "descr-M",   "type":      ("Dp", "Dn"), "len": [4, 8]},
+            {"name": "descr-L",   "type":      ("Dp", "Dn"), "len": [9, max_len]},
         ]
 
 

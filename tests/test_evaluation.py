@@ -54,7 +54,7 @@ class TestEvaluation(unittest.TestCase):
 
         res = testTemplate("8357.json", createPredMissingOneTP_ex8357)
         self.assertAlmostEqual(
-            res[11]["value"], 5/6, delta=1e-5, msg="5 TP, 1 FN, 0 FP does not give recall=0.8333"
+            res[12]["value"], 5/6, delta=1e-5, msg="5 TP, 1 FN, 0 FP does not give recall=0.8333"
         )
 
     def testMissingTwoTP_ex8357(self):
@@ -70,7 +70,7 @@ class TestEvaluation(unittest.TestCase):
 
         res = testTemplate("8357.json", createPredMissingTwoTP_ex8357)
         self.assertAlmostEqual(
-            res[11]["value"], 4/6, delta=1e-5, msg="4 TP, 2 FN, 0 FP does not give recall=0.66666"
+            res[12]["value"], 4/6, delta=1e-5, msg="4 TP, 2 FN, 0 FP does not give recall=0.66666"
         )
 
     def testAddingOneFP_ex8357(self):
@@ -132,8 +132,51 @@ class TestEvaluation(unittest.TestCase):
 
         res = testTemplate("8357.json", createPredRemovingOneTPfromExistingBBox_ex8357)
         self.assertAlmostEqual(
-            res[10]["value"], 1/2, delta=1e-5, msg="1 TP, 1 FN, 0 FP does not give recall=0.5"
+            res[11]["value"], 1/2, delta=1e-5, msg="1 TP, 1 FN, 0 FP does not give recall=0.5"
         )
+
+    def testAPDescrPosWhenAddingOneFPOnNegDescr_ex8357(self):
+
+        def createPredAddingOneFP_ex8357(pred):
+            # Turn annotations into predictions by adding scores
+            for ann in pred["annotations"]:
+                ann["scores"] = [1.0] * len(ann["description_ids"])
+
+            # Add one FP for a negative free-form object description
+            from itertools import chain
+            pos_descr_ids = set(chain(*[box["description_ids"] for box in pred["annotations"]]))
+            neg_freeform_descr_ids = [
+                descr["id"] for descr in pred["descriptions"]
+                if descr["anno_info"]["type"] == "object_description"
+                and descr["id"] not in pos_descr_ids
+            ]
+            assert len(neg_freeform_descr_ids) > 0
+            neg_freeform_descr_id = neg_freeform_descr_ids[0]
+            pred["annotations"].append({
+                    "image_id": 8357,
+                    "description_ids": [neg_freeform_descr_id],
+                    "bbox": [14, 18, 2, 68],
+                    "scores": [2.0]  # Higher score than other detections!
+            })
+            return pred
+
+        res = testTemplate("8357.json", createPredAddingOneFP_ex8357)
+
+        # Adding one FP for a negative free-form description should not affect the `AP-descr-Pos`
+        # metric, which ignores negative descritpions. But it should reduce the `AP-descr` metric.
+        # In this case, we have 2 ground truth free-form descriptions, plus one FP > Target for
+        # `AP-descr` is then 2/3 and target for `AP-descr-Pos` is 1.0
+        with self.subTest():
+            self.assertAlmostEqual(
+                res[2]["value"], 2/3, delta=1e-5, msg="2 TP and 1 FP does not give AP=2/3"
+            )
+        with self.subTest():
+            self.assertAlmostEqual(
+                res[3]["value"],
+                1.0,
+                delta=1e-5,
+                msg="Adding 1 FP of negative free-from description should not affect 'AP-descr-Pos'"
+            )
 
 
 if __name__ == '__main__':
