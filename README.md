@@ -102,7 +102,7 @@ Here is some example code how to evaluate results:
 from omnilabeltools import OmniLabel, OmniLabelEval
 
 gt = OmniLabel(data_json_path)              # load ground truth dataset
-dt = omniGt.load_res(res_json_path)         # load prediction results
+dt = gt.load_res(res_json_path)             # load prediction results
 ole = OmniLabelEval(gt, dt)
 ole.params.resThrs = ...                    # set evaluation parameters as desired
 ole.evaluate()
