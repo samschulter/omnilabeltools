@@ -372,7 +372,11 @@ class OmniLabelEval(COCOeval):
                 num_gts[ii + 1] = num_gt
 
             # Overall metric: Harmonic mean of AP of descriptions and categories
-            stats[0] = (2 * stats[1] * stats[2]) / (stats[1] + stats[2] + 1e-5)
+            if num_gts[1] > 0 and num_gts[2] > 0:
+                hm = (2 * stats[1] * stats[2]) / (stats[1] + stats[2] + 1e-5)
+            else:
+                hm = -1
+            stats[0] = hm
             metrics[0] = copy.deepcopy(metrics[1])
             metrics[0]["description"] = "hm(descr,categ)"
             num_gts[0] = num_gts[1] + num_gts[2]
