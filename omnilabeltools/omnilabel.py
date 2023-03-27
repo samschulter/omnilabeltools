@@ -21,6 +21,19 @@ class OmniLabel:
         assert path_json.exists(), f"Path to JSON '{path_json}' does not work!"
         with open(path_json, "r") as fid:
             data_json = json.load(fid)
+
+        if "info" in data_json and "name" in data_json["info"]:
+            ds_name = data_json["info"]["name"]
+        else:
+            ds_name = "unknown"
+        if "omnilabel" in ds_name.lower():
+            assert "info" in data_json and "version" in data_json["info"]
+            ol_version = data_json["info"]["version"]
+            ol_url = data_json["info"]["url"]
+            assert ol_version == "0.1.2", \
+                (f"An out-dated version of the ground truth was loaded (v{ol_version}). "
+                 f"The latest version is v0.1.2, please see {ol_url}")
+
         assert "images" in data_json, "Faulty JSON file: 'images' key missing"
         assert "descriptions" in data_json, "Faulty JSON file: 'descriptions' key missing"
         self.has_boxes = has_boxes = "annotations" in data_json
