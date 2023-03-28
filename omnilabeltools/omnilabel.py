@@ -30,9 +30,9 @@ class OmniLabel:
             assert "info" in data_json and "version" in data_json["info"]
             ol_version = data_json["info"]["version"]
             ol_url = data_json["info"]["url"]
-            assert ol_version == "0.1.2", \
+            assert ol_version == "0.1.3", \
                 (f"An out-dated version of the ground truth was loaded (v{ol_version}). "
-                 f"The latest version is v0.1.2, please see {ol_url}")
+                 f"The latest version is v0.1.3, please see {ol_url}")
 
         assert "images" in data_json, "Faulty JSON file: 'images' key missing"
         assert "descriptions" in data_json, "Faulty JSON file: 'descriptions' key missing"
