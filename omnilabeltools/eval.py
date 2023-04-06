@@ -88,44 +88,58 @@ class OmniLabelEval(COCOeval):
         self._gts = defaultdict(list)       # gt for evaluation
         self._dts = defaultdict(list)       # dt for evaluation
 
+        pImgIds_hash = {imgid: True for imgid in p.imgIds}  # Dict is faster to query with `in`
+
         for img_id, gt in self.omniGt.samples.items():
-            if img_id not in p.imgIds:
+            if img_id not in pImgIds_hash:
                 continue
             for instance in gt["instances"]:
                 instance['ignore'] = instance['ignore'] if 'ignore' in instance else 0
                 instance['ignore'] = 'iscrowd' in instance and instance['iscrowd']
-                for descr_id in instance["description_ids"]:
-                    instanceNew = copy.deepcopy(instance)
-                    instanceNew["descr_id"] = descr_id
-                    self._gts[(img_id, descr_id)].append(instanceNew)
+                for di, descr_id in enumerate(instance["description_ids"]):
+                    if di == 0:
+                        instance_new = instance
+                    else:
+                        instance_new = {}  # Faster than copy.deepcopy()
+                        instance_new.update(instance)
+                    instance_new["descr_id"] = descr_id
+                    self._gts[(img_id, descr_id)].append(instance_new)
 
         for img_id, dt in self.omniDt.samples.items():
-            if img_id not in p.imgIds:
+            if img_id not in pImgIds_hash:
                 continue
             for instance in dt["instances"]:
-                for descr_id, score in zip(instance["description_ids"], instance["scores"]):
-                    instanceNew = copy.deepcopy(instance)
-                    instanceNew["descr_id"] = descr_id
-                    instanceNew["score"] = score
-                    self._dts[(img_id, descr_id)].append(instanceNew)
+                assert len(instance["description_ids"]) == len(instance["scores"])
+                for ii, (descr_id, score) in enumerate(zip(
+                        instance["description_ids"], instance["scores"]
+                )):
+                    if ii == 0:
+                        instance_new = instance
+                    else:
+                        instance_new = {}
+                        instance_new.update(instance)
+                    instance_new["descr_id"] = descr_id
+                    instance_new["score"] = score
+                    self._dts[(img_id, descr_id)].append(instance_new)
 
         self.evalImgs = defaultdict(list)   # evaluation results for every (img_id, descr_id)-pair
         self.eval = {}                      # accumulated evaluation results
 
         self.imgIdToLabelspace = {
             img_id: [d["id"] for d in gt["labelspace"]]
-            for img_id, gt in self.omniGt.samples.items() if img_id in p.imgIds
+            for img_id, gt in self.omniGt.samples.items() if img_id in pImgIds_hash
         }
 
         self.descrIdToType = {}
         for img_id, gt in self.omniGt.samples.items():
-            if img_id not in p.imgIds:
+            if img_id not in pImgIds_hash:
                 continue
             pos_descr_ids = set(chain(*[box["description_ids"] for box in gt["instances"]]))
+            pos_descr_ids_hash = {pid: True for pid in pos_descr_ids}
             for descr in gt["labelspace"]:
                 type_str = descr["type"]
                 if type_str == "D":
-                    type_str += "p" if descr["id"] in pos_descr_ids else "n"
+                    type_str += "p" if descr["id"] in pos_descr_ids_hash else "n"
                 assert (descr["id"], img_id) not in self.descrIdToType
                 self.descrIdToType[(descr["id"], img_id)] = type_str
 
@@ -139,7 +153,7 @@ class OmniLabelEval(COCOeval):
         Run per-image evaluation on given images and store results (a list of dict) in
         `self.evalImgs`
         """
-        tic = time.time()
+        tic = time.perf_counter()
         print("Running per image evaluation...")
         p = self.params
         p.imgIds = list(np.unique(p.imgIds))
@@ -155,14 +169,14 @@ class OmniLabelEval(COCOeval):
         }
         maxDet = p.maxDets[-1]
         self.evalImgs = {
-            (descrId, f"{areaRng[0]}-{areaRng[1]}", imgId):
+            (descrId, areaRng[0], areaRng[1], imgId):
             self.evaluateImg(imgId, descrId, areaRng, maxDet)
             for areaRng in p.areaRng
             for imgId in p.imgIds
             for descrId in self.imgIdToLabelspace[imgId]
         }
         self._paramsEval = copy.deepcopy(self.params)
-        toc = time.time()
+        toc = time.perf_counter()
         print("DONE (t={:0.2f}s).".format(toc-tic))
 
     def evaluateImg(self, imgId, descrId, aRng, maxDet):
@@ -192,7 +206,7 @@ class OmniLabelEval(COCOeval):
             p (Params): Input parameters for evaluation
         """
         print("Accumulating evaluation results...")
-        tic = time.time()
+        tic = time.perf_counter()
         if not self.evalImgs:
             print("Please run evaluate() first")
         # allows input customized parameters
@@ -219,13 +233,17 @@ class OmniLabelEval(COCOeval):
         i_list = [i for i in p.imgIds if i in setI]
         # retrieve E at each description, area range, and max number of detections
         for a, a0 in enumerate(a_list):
+            # Pre-filter the `self.evalImgs` dict, which makes the lookup faster below
+            eval_imgs_a0 = {
+                (key[0], key[3]): val for key, val in self.evalImgs.items()
+                if key[1] == a0[0] and key[2] == a0[1]
+            }
+
             for m, maxDet in enumerate(m_list):
                 for di, descr_group in enumerate(p.descrGroups):
                     assert len(descr_group["len"]) == 2
                     E = [
-                        self.evalImgs[(descrid, f"{a0[0]}-{a0[1]}", i)]
-                        if (descrid, f"{a0[0]}-{a0[1]}", i) in self.evalImgs
-                        else None
+                        eval_imgs_a0[(descrid, i)] if (descrid, i) in eval_imgs_a0 else None
                         for i in i_list for descrid in self.imgIdToLabelspace[i]
                         if (self.descrIdToType[(descrid, i)] in descr_group["type"])
                         and (self.descrIdToDescrNumWords[descrid] >= descr_group["len"][0])
@@ -294,7 +312,7 @@ class OmniLabelEval(COCOeval):
             "scores": scores,
             "gtcount": gtcount,
         }
-        toc = time.time()
+        toc = time.perf_counter()
         print("DONE (t={:0.2f}s).".format(toc-tic))
 
     def summarize(self, verbose=True):
@@ -479,8 +497,12 @@ data format, please visit: https://www.omnilabel.org/download
     path_res = Path(args.path_to_res)
     assert path_res.exists(), path_res
 
+    t_start = time.perf_counter()
+    print("Loading ground truth & result files ... ", end="", flush=True)
     olgt = OmniLabel(path_json=path_gt)
     oldt = olgt.load_res(source=path_res)
+    t_dur = time.perf_counter() - t_start
+    print(f"took {t_dur:.2f} seconds")
 
     ol_eval = OmniLabelEval(gt=olgt, dt=oldt)
     ol_eval.evaluate()
