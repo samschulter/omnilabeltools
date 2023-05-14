@@ -104,7 +104,7 @@ from omnilabeltools import OmniLabel, OmniLabelEval
 gt = OmniLabel(data_json_path)              # load ground truth dataset
 dt = gt.load_res(res_json_path)             # load prediction results
 ole = OmniLabelEval(gt, dt)
-ole.params.resThrs = ...                    # set evaluation parameters as desired
+ole.params.recThrs = ...                    # set evaluation parameters as desired
 ole.evaluate()
 ole.accumulate()
 ole.summarize()

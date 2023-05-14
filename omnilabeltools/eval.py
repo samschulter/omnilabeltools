@@ -15,7 +15,7 @@ class OmniLabelEval(COCOeval):
     gt = OmniLabel(data_json_path)             # load dataset with ground truth data
     dt = gt.load_res(res_json_path)            # load predictions (returns new `OmniLabel` instance)
     ole = OmniLabelEval(gt, dt)
-    ole.params.resThrs = ...                   # set parameters as desired
+    ole.params.recThrs = ...                   # set parameters as desired
     ole.evaluate()                             # run per image evaluation
     ole.accumulate()                           # accumulate per image results
     ole.summarize()                            # display summary metrics of results
