@@ -154,7 +154,7 @@ class OmniLabelEval(COCOeval):
         `self.evalImgs`
         """
         tic = time.perf_counter()
-        print("Running per image evaluation...")
+        print("Running per image evaluation ... ", end="", flush=True)
         p = self.params
         p.imgIds = list(np.unique(p.imgIds))
         p.maxDets = sorted(p.maxDets)
@@ -177,7 +177,7 @@ class OmniLabelEval(COCOeval):
         }
         self._paramsEval = copy.deepcopy(self.params)
         toc = time.perf_counter()
-        print("DONE (t={:0.2f}s).".format(toc-tic))
+        print("took {:0.2f} seconds".format(toc-tic))
 
     def evaluateImg(self, imgId, descrId, aRng, maxDet):
         """
@@ -205,7 +205,7 @@ class OmniLabelEval(COCOeval):
         Arg:
             p (Params): Input parameters for evaluation
         """
-        print("Accumulating evaluation results...")
+        print("Accumulating evaluation results ... ", end="", flush=True)
         tic = time.perf_counter()
         if not self.evalImgs:
             print("Please run evaluate() first")
@@ -313,7 +313,7 @@ class OmniLabelEval(COCOeval):
             "gtcount": gtcount,
         }
         toc = time.perf_counter()
-        print("DONE (t={:0.2f}s).".format(toc-tic))
+        print("took {:0.2f} seconds".format(toc-tic))
 
     def summarize(self, verbose=True):
         """
@@ -404,7 +404,7 @@ class OmniLabelEval(COCOeval):
         def _print_metrics(results):
             res_str = (
                 " {metric:s} @[ IoU={iou:<9} | area={area:>6s} | descr={descr:>15s} | "
-                "maxDets={md:>3d} ][ num-gt={numgt:>5d} ] = {val:0.3f}"
+                "maxDets={md:>3d} ][ num-gt={numgt:>5d} ] = {val:0.5f}"
             )
             for res in results:
                 met = res["metric"]
