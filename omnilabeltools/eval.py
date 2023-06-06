@@ -148,6 +148,16 @@ class OmniLabelEval(COCOeval):
             for descr_id in self.omniGt.descr_ids
         }
 
+        self.descrIdToNumRefBoxes = defaultdict(int)
+        for img_id, gt in self.omniGt.samples.items():
+            if img_id not in pImgIds_hash:
+                continue
+            for inst in gt["instances"]:
+                for descr_id in inst["description_ids"]:
+                    self.descrIdToNumRefBoxes[descr_id] += 1
+        # NB: If at this point no box referred to a descrption, `self.descrIdToNumRefBoxes` will
+        # return 0 for any description ID queried.
+
     def evaluate(self):
         """
         Run per-image evaluation on given images and store results (a list of dict) in
@@ -247,7 +257,9 @@ class OmniLabelEval(COCOeval):
                         for i in i_list for descrid in self.imgIdToLabelspace[i]
                         if (self.descrIdToType[(descrid, i)] in descr_group["type"])
                         and (self.descrIdToDescrNumWords[descrid] >= descr_group["len"][0])
-                        and self.descrIdToDescrNumWords[descrid] <= descr_group["len"][1]
+                        and (self.descrIdToDescrNumWords[descrid] <= descr_group["len"][1])
+                        and (self.descrIdToNumRefBoxes[descrid] >= descr_group["boxes"][0])
+                        and (self.descrIdToNumRefBoxes[descrid] <= descr_group["boxes"][1])
                     ]
                     E = [e for e in E if e is not None]
                     if len(E) == 0:
@@ -364,20 +376,22 @@ class OmniLabelEval(COCOeval):
             return mean_s, metric_dict, num_gt
 
         def _summarize_all_metrics():
-            max_det_dflt = self.params.maxDets[2]
+
+            metric_names = [grp["name"] for grp in self.params.descrGroups]
+            compute_hm = "descr" in metric_names and "categ" in metric_names
+            assert compute_hm, "Your parameter settings most contain both `descr` and `categ` to compute the final metric hm(descr, categ)"  # noqa: E501
+
             ret = []
-            ret.append(_summarize(1, descr="categ", maxDets=max_det_dflt))  # NB: Keep this first
-            ret.append(_summarize(1, descr="descr", maxDets=max_det_dflt))  # NB: Keep this second
-            ret.append(_summarize(1, descr="descr-Pos", maxDets=max_det_dflt))
-            ret.append(_summarize(1, descr="descr-S", maxDets=max_det_dflt))
-            ret.append(_summarize(1, descr="descr-M", maxDets=max_det_dflt))
-            ret.append(_summarize(1, descr="descr-L", maxDets=max_det_dflt))
-            ret.append(_summarize(1, descr="descr", iouThr=.5, maxDets=max_det_dflt))
-            ret.append(_summarize(1, descr="descr", iouThr=.75, maxDets=max_det_dflt))
-            ret.append(_summarize(1, descr="categ", iouThr=.5, maxDets=max_det_dflt))
-            ret.append(_summarize(1, descr="categ", iouThr=.75, maxDets=max_det_dflt))
-            ret.append(_summarize(0, descr="descr", maxDets=self.params.maxDets[2]))
-            ret.append(_summarize(0, descr="categ", maxDets=self.params.maxDets[2]))
+            for grp in self.params.descrGroups:
+                ret.append(_summarize(1, descr=grp["name"]))
+
+            # Append standard metrics from COCO for both categories and descriptions
+            ret.append(_summarize(1, descr="descr", iouThr=.5))
+            ret.append(_summarize(1, descr="descr", iouThr=.75))
+            ret.append(_summarize(1, descr="categ", iouThr=.5))
+            ret.append(_summarize(1, descr="categ", iouThr=.75))
+            ret.append(_summarize(0, descr="descr"))
+            ret.append(_summarize(0, descr="categ"))
 
             # Separate tuples returned by `_summarize` into stats, metrics and num_gts. Add one
             # element that comes first for the final metric, see below
@@ -435,28 +449,28 @@ class Params(ParamsCOCOAPI):
     Collection of parameters that define the evaluation process. This is derived from the COCOAPI,
     see [here](https://github.com/ppwwyyxx/cocoapi/blob/71e284ef862300e4319aacd523a64c7f24750178/PythonAPI/pycocotools/cocoeval.py#L498.
 
-    Parameters for grouping the results based on the type of object description are added:
+    New parameters for grouping the results for object descriptions are defined:
 
-    * 'all'               ... Standard evaluation, all object descriptions are considered
     * 'categ'             ... Only plain object *categories*, as in other (open-vocabulary) detection datasets
     * 'descr'             ... Only free-form object *descriptions* (newly collected in the OmniLabel benchmark)
-    * 'descr-Pos'         ... Only free-form object *descriptions* that refer to objects in the image (excluding negative object descriptions)
-    * 'descr-S'           ... Same as 'descr', but consider only descriptions up to 3 words (short)
-    * 'descr-M'           ... Same as 'descr', but consider only descriptions from 4 to 8 words (medium)
-    * 'descr-L'           ... Same as 'descr', but consider only descriptions longer than 8 words (long)
+    * 'descr-pos'         ... Only free-form object *descriptions* that refer to objects in the image (excluding negative object descriptions)
+    * 'descr-s'           ... Same as 'descr', but consider only descriptions up to 3 words (short)
+    * 'descr-m'           ... Same as 'descr', but consider only descriptions from 4 to 8 words (medium)
+    * 'descr-l'           ... Same as 'descr', but consider only descriptions longer than 8 words (long)
     """  # noqa: E501
 
     def __init__(self, iouType="segm"):
         super().__init__(iouType)
         max_len = 1e5
         self.descrGroups = [
-            {"name": "all",       "type": ("Dp", "Dn", "C"), "len": [0, max_len]},
-            {"name": "categ",     "type":             ("C"), "len": [0, max_len]},
-            {"name": "descr",     "type":      ("Dp", "Dn"), "len": [0, max_len]},
-            {"name": "descr-Pos", "type":            ("Dp"), "len": [0, max_len]},
-            {"name": "descr-S",   "type":      ("Dp", "Dn"), "len": [0, 3]},
-            {"name": "descr-M",   "type":      ("Dp", "Dn"), "len": [4, 8]},
-            {"name": "descr-L",   "type":      ("Dp", "Dn"), "len": [9, max_len]},
+            {"name": "categ",       "type":             ("C"), "len": [0, max_len], "boxes": [0, max_len]},  # noqa: E501
+            {"name": "descr",       "type":      ("Dp", "Dn"), "len": [0, max_len], "boxes": [0, max_len]},  # noqa: E501
+            {"name": "descr-pos",   "type":            ("Dp"), "len": [0, max_len], "boxes": [0, max_len]},  # noqa: E501
+            # {"name": "descr-pos-1", "type":            ("Dp"), "len": [0, max_len], "boxes": [1, 1]},  # noqa: E501
+            # {"name": "descr-pos-m", "type":            ("Dp"), "len": [0, max_len], "boxes": [2, max_len]},  # noqa: E501
+            {"name": "descr-s",     "type":      ("Dp", "Dn"), "len": [0, 3],       "boxes": [0, max_len]},  # noqa: E501
+            {"name": "descr-m",     "type":      ("Dp", "Dn"), "len": [4, 8],       "boxes": [0, max_len]},  # noqa: E501
+            {"name": "descr-l",     "type":      ("Dp", "Dn"), "len": [9, max_len], "boxes": [0, max_len]},  # noqa: E501
         ]
 
 
