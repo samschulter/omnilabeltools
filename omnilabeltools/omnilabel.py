@@ -5,6 +5,9 @@ import copy
 from collections import defaultdict
 
 
+CHECK_VERSION: bool = True
+
+
 class OmniLabel:
     """
     Container to load an OmniLabel annotation file (`json`) and structure the data for easy use as
@@ -26,13 +29,15 @@ class OmniLabel:
             ds_name = data_json["info"]["name"]
         else:
             ds_name = "unknown"
-        if "omnilabel" in ds_name.lower():
+        if "omnilabel" in ds_name.lower() and CHECK_VERSION:
             assert "info" in data_json and "version" in data_json["info"]
             ol_version = data_json["info"]["version"]
             ol_url = data_json["info"]["url"]
-            assert ol_version == "0.1.3", \
-                (f"An out-dated version of the ground truth was loaded (v{ol_version}). "
-                 f"The latest version is v0.1.3, please see {ol_url}")
+            ol_version_latest = "0.1.3"
+            if not ol_version == ol_version_latest:
+                print("\n\nWARNING: An out-dated version of the ground truth was loaded "
+                      f"(v{ol_version}). The latest version is v{ol_version_latest}, please see "
+                      f"{ol_url}\n")
 
         assert "images" in data_json, "Faulty JSON file: 'images' key missing"
         assert "descriptions" in data_json, "Faulty JSON file: 'descriptions' key missing"
