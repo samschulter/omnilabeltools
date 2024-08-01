@@ -49,6 +49,7 @@ class OmniLabel:
             descr["type"] = "D" if descr["anno_info"]["type"] == "object_description" else "C"
             for imgid in descr["image_ids"]:
                 imgid_to_descrs[imgid].append(descr)
+            descr["llm_generated"] = "llm_generated" in descr["anno_info"]
             # Remove redundant info to keep samples lean and clean
             descr.pop("anno_info")
         self.descr_id_to_descr = {descr["id"]: descr for descr in data_json["descriptions"]}

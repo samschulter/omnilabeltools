@@ -217,7 +217,11 @@ def visualize_image_sample(
             neg_text = "No negative free-form text descriptions for this image"
         else:
             neg_text = f"{len(neg_descrs)} negative free-form text descriptions:\n" + \
-                "\n".join(["- \"" + descr["text"] + "\"" for descr in neg_descrs])
+                "\n".join([
+                    "- '" + descr["text"] + "'" + \
+                    " (LLM-generated)" if 'llm_generated' in descr else ""
+                    for descr in neg_descrs
+                ])
 
         # Draw the text below the actual image
         draw = ImageDraw.Draw(vis_pil, mode="RGB")
