@@ -94,7 +94,6 @@ class OmniLabelEval(COCOeval):
             if img_id not in pImgIds_hash:
                 continue
             for instance in gt["instances"]:
-                instance['ignore'] = instance['ignore'] if 'ignore' in instance else 0
                 instance['ignore'] = 'iscrowd' in instance and instance['iscrowd']
                 for di, descr_id in enumerate(instance["description_ids"]):
                     if di == 0:
